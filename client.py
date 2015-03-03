@@ -42,11 +42,15 @@ class ConnectivityClient:
             sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         else:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        
-        for idx in range(0, len(self.data), self.udpPacketSize):
-            packet = self.data[idx:min(idx+self.udpPacketSize, len(self.data))]
-            sock.sendto(packet, addr)
-            time.sleep(0.001)
+
+        idx = 0
+        while idx < len(self.data):
+            buf = self.data[idx:min(idx+self.udpPacketSize, len(self.data))]
+            count_sent = sock.sendto(buf, addr)
+            if count_sent < len(buf):
+                time.sleep(0.0001)
+            print(count_sent)
+            idx += count_sent
 
         self.log.info("udp {}: receiving".format(addr))
         recvd_length = 0

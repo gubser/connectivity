@@ -33,13 +33,10 @@ class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 class UDPServer:
     def __init__(self, port, ipv6, data, packetSize=4096, timeout=15):
-        self.log = logging.getLogger("udp")
+        self.log = logging.getLogger("udp-{}:{:<6}".format("6" if ipv6 else "4", port))
         
         self.ipv6 = ipv6
-        if ipv6:
-            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        else:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        self.sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         
         self.sock.settimeout(1)
         
@@ -55,14 +52,14 @@ class UDPServer:
         
     def start(self):
         self.thread.start()
-        self.log.info("udp server{} started on port {}".format(" (IPv6)" if self.ipv6 else "", self.port))
+        self.log.info("server started")
     
     def perform_send(self, addr):
-        self.log.info("udp {}:sending data".format(addr))
+        self.log.info("{}: sending data".format(addr))
         for idx in range(0, len(self.data), self.packetSize):
             packet = self.data[idx:min(idx+self.packetSize, len(self.data))]
             self.sock.sendto(packet, addr)
-        self.log.info("udp {}:data send complete".format(addr))
+        self.log.info("{}: data send complete".format(addr))
     
     def _proc(self):
         while True:
@@ -73,7 +70,7 @@ class UDPServer:
                 toDelete = []
                 for key in iter(self.requests):
                     if self.requests[key][1] + self.timeout < time.time():
-                        self.log.info("udp {}: timeout, initiate sending data".format(key))
+                        self.log.info("{}: timeout, initiate sending data".format(key))
                         self.perform_send(addr)
                         toDelete.append(addr)
 
@@ -92,11 +89,11 @@ class UDPServer:
                 # record bytes received
                 self.requests[addr][0] += len(buf)
                 
-                self.log.debug("udp {}: recvd {} of {} bytes".format(addr, self.requests[addr][0], len(self.data)))
+                self.log.debug("{}: recvd {} of {} bytes".format(addr, self.requests[addr][0], len(self.data)))
                 
                 # all data received? start transmit
                 if self.requests[addr][0] >= len(self.data):
-                    self.log.info("udp {}: recvd full data".format(addr, self.requests[addr][0], len(self.data)))
+                    self.log.info("{}: recvd full data".format(addr, self.requests[addr][0], len(self.data)))
                     self.perform_send(addr)
                     del self.requests[addr]
             
@@ -120,7 +117,7 @@ def start_servers(ports, data):
         time.sleep(100)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
     
     # parse parameters
     parser = argparse.ArgumentParser(description='Provides a server for TCP/UDP/TLS/DTLS/SCTP connectivity testing.')

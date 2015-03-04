@@ -109,23 +109,35 @@ def main():
     
     # parse parameters
     parser = argparse.ArgumentParser(description='Provides a client for TCP/UDP/TLS/DTLS/SCTP connectivity testing.')
-    parser.add_argument('-f', '--file', default='image.png', metavar='filename', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
+    parser.add_argument('-f', '--file', default='image.png', metavar='FILENAME', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
     parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
-    parser.add_argument('--hosts', metavar='hostname/ip', type=str, nargs='+', required=True, dest='hosts')
-    parser.add_argument('--ports', metavar='port', type=int, nargs='+', required=True, dest='ports')
-    parser.add_argument('--udp-bitrate', type=str, default='1M', metavar='bitrate', help='set maximum udp bitrate. use postfix M and k to specify megabits or kilobits (e.g. 500k)', dest='udp_bitrate')
+    parser.add_argument('--hosts', metavar='HOSTNAME/IP', type=str, nargs='+', required=True, dest='hosts')
+    parser.add_argument('--ports', metavar='PORT', type=int, nargs='+', required=True, dest='ports')
 
-    parser_tcp = parser.add_mutually_exclusive_group()
-    parser_tcp.add_argument('--tcp', action='store_true', dest='enable_tcp')
-    parser_tcp.add_argument('--no-tcp', action='store_false', dest='enable_tcp')
+    # tcp options
+    parser_tcp = parser.add_argument_group("options for tcp protocol")
 
-    parser_udp = parser.add_mutually_exclusive_group()
-    parser_udp.add_argument('--udp', action='store_true', dest='enable_udp')
-    parser_udp.add_argument('--no-udp', action='store_false', dest='enable_udp')
+    parser_tcp_en = parser.add_mutually_exclusive_group()
+    parser_tcp_en.add_argument('--tcp', action='store_true', dest='enable_tcp', help='Enable tcp test.')
+    parser_tcp_en.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
 
-    parser_tls = parser.add_mutually_exclusive_group()
-    parser_tls.add_argument('--tls', action='store_true', dest='enable_tls')
-    parser_tls.add_argument('--no-tls', action='store_false', dest='enable_tls')
+    parser_tcp.add_argument('--tcp-bitrate', default='1M', metavar='BITRATE', help='Set maximum tcp bitrate. This also applies for tls. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='tcp_bitrate')
+
+    # udp options
+    parser_udp = parser.add_argument_group("options for udp protocol")
+
+    parser_udp_en = parser_udp.add_mutually_exclusive_group()
+    parser_udp_en.add_argument('--udp', action='store_true', dest='enable_udp', help='Enable udp test.')
+    parser_udp_en.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')
+
+    parser_udp.add_argument('--udp-bitrate', default='1M', metavar='BITRATE', help='Set maximum udp bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='udp_bitrate')
+
+    # tls options
+    parser_tls = parser.add_argument_group("options for udp protocol")
+
+    parser_tls_en = parser.add_mutually_exclusive_group()
+    parser_tls_en.add_argument('--tls', action='store_true', dest='enable_tls', help='Enable tls test.')
+    parser_tls_en.add_argument('--no-tls', action='store_false', dest='enable_tls', help='Disable udp test.')
 
     parser.set_defaults(enable_tcp=None, enable_udp=None, enable_tls=None, enable_dtls=None, enable_sctp=None)
 

@@ -37,16 +37,14 @@ class UDPServer:
         
         self.ipv6 = ipv6
         self.sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        
         self.sock.settimeout(1)
-        
-        self.data = data
-        
         self.sock.bind(('', port))
-        self.thread = threading.Thread(target=self._proc, daemon=True)
-        
         self.port = port
         self.packetSize = packetSize
+
+        self.thread = threading.Thread(target=self._proc, daemon=True)
+
+        self.data = data
         self.timeout = timeout
         self.requests = {}
         
@@ -112,10 +110,14 @@ def start_servers(ports, data):
         tcp.listener_thread = threading.Thread(target=tcp.serve_forever, daemon=True)
         tcp.listener_thread.start()
         
-        udp = UDPServer(port, False, data)
-        udp.start()
+        udp4 = UDPServer(port, False, data)
+        udp4.start()
+
+        udp6 = None
+        #udp6 = UDPServer(port, True, data)
+        #udp6.start()
                 
-        servers[port] = (tcp, udp)
+        servers[port] = (tcp, udp4, udp6)
         
     while True:
         time.sleep(100)

@@ -2,6 +2,9 @@
 image.png
 image.jpg
 
+# PyCharm Project Directory
+.idea
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

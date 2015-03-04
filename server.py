@@ -55,10 +55,14 @@ class UDPServer:
         self.log.info("server started")
     
     def perform_send(self, addr):
+        rate = float(self.requests[addr][0]) / (self.requests[addr][1] - self.requests[addr][2])
+        delay = self.packetSize / rate
+
         self.log.info("{}: sending data".format(addr))
         for idx in range(0, len(self.data), self.packetSize):
             packet = self.data[idx:min(idx+self.packetSize, len(self.data))]
             self.sock.sendto(packet, addr)
+            time.sleep(delay)
         self.log.info("{}: data send complete".format(addr))
     
     def _proc(self):
@@ -79,8 +83,8 @@ class UDPServer:
 
             else:
                 if addr not in self.requests:
-                    # add new entry: bytes_received, time last received
-                    self.requests[addr] = [0, 0]
+                    # add new entry: bytes_received, time last received, time first received
+                    self.requests[addr] = [0, 0, time.time()]
                     
                     
                 # reset timeout

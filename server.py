@@ -5,24 +5,49 @@ import logging
 import time
 
 import threading
+import ssl
 
-class TcpRequest(socketserver.StreamRequestHandler):
+class TcpRequest(socketserver.BaseRequestHandler):
     def handle(self):
         log = logging.getLogger("tcp")
-        
-        # recv data
+
         expected_length = len(self.server.data)
         log.info("new tcp connection".format(self.client_address[0]))
+
+        # check for magic string
+        magic_expected = b'happy dance!'
+        magic = self.request.recv(len(magic_expected))
+        if magic == magic_expected:
+            log.info("switching to tls")
+            self.request = ssl.wrap_socket(self.request, keyfile='serverkey.pem', certfile='servercert.pem', server_side=True, cert_reqs=ssl.CERT_OPTIONAL, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs=None, ciphers='HIGH', do_handshake_on_connect=False)
+            self.request.do_handshake()
+
+        # enable timeout
+        self.request.settimeout(self.server.timeout)
+
+        # recv image
+        recvd_length = 0
+        last_time = time.time()
         log.info("recv {} bytes".format(expected_length))
-        recvd = self.rfile.read(expected_length)
-        if len(recvd) != expected_length:
-            log.error("received data not enough")
+        while recvd_length < expected_length and last_time + self.server.timeout > time.time():
+            try:
+                recvd = self.request.recv(expected_length - recvd_length)
+            except socket.timeout:
+                continue
+            else:
+                # received something, so reset timeout
+                last_time = time.time()
+                recvd_length += len(recvd)
+
+        if recvd_length < expected_length:
+            log.error("timeout. received data not enough")
         
         # send data
         log.info("send {} bytes".format(expected_length))
-        self.wfile.write(self.server.data)
+        self.request.send(self.server.data)
         
         log.info("finished")
+        self.request.close()
         
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     address_family = socket.AF_INET6
@@ -91,7 +116,7 @@ class UDPServer:
                 # record bytes received
                 self.requests[addr][0] += len(buf)
                 
-                self.log.debug("{}: recvd {} of {} bytes".format(addr, self.requests[addr][0], len(self.data)))
+                self.log.debug("{}: recvd {} of {} bytes ({} %)".format(addr, self.requests[addr][0], len(self.data), self.requests[addr][0]*100/len(self.data)))
                 
                 # all data received? start transmit
                 if self.requests[addr][0] >= len(self.data):
@@ -107,6 +132,7 @@ def start_servers(ports, data):
     for port in ports:
         tcp = ThreadingTCPServer(('', port), TcpRequest)
         tcp.data = data
+        tcp.timeout = 15
         tcp.listener_thread = threading.Thread(target=tcp.serve_forever, daemon=True)
         tcp.listener_thread.start()
         

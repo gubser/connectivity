@@ -3,15 +3,16 @@ import argparse
 import ipaddress
 import logging
 import time
+import ssl
 #import dtls
 
 class ConnectivityClient:
-    def __init__(self, ips, ports, data, udpTimeout=20, udpPacketSize=4096, udp_bitrate=512*1024):
+    def __init__(self, ips, ports, data, udpTimeout=20, udpPacketSize=4096, bitrate=512*1024):
         self.log = logging.getLogger("client")
         self.endpoints = [((ip, port), ipaddress.ip_address(ip).version == 6) for port in ports for ip in ips]
         self.udpTimeout = udpTimeout
         self.udpPacketSize = udpPacketSize
-        self.udp_bitrate = udp_bitrate
+        self.bitrate = bitrate
 
         self.data = data
         
@@ -37,13 +38,32 @@ class ConnectivityClient:
             if enable_udp:
                 self.run_udp(addr, ipv6)
             if enable_tls:
-                pass#self.run_tls(addr, ipv6)
+                self.run_tls(addr, ipv6)
             if enable_dtls:
                 pass#self.run_dtls()
             if enable_sctp:
                 pass#self.run_sctp()
-            
-    def run_tcp(self, addr, ipv6):
+
+    def send_stream_throttled(self, sock):
+        # calculate amount to send in one slot_time.
+        slot_time = 0.01
+        slot_amount = int(self.bitrate/8 * slot_time)
+
+        idx = 0
+        while idx < len(self.data):
+            slot_start = time.time()
+            slot_sent = 0
+            while slot_start+slot_time > time.time():
+                if slot_sent < slot_amount and idx < len(self.data):
+                    buffer = self.data[idx:min(idx+(slot_amount-slot_sent), len(self.data))]
+                    bytes_sent = sock.send(buffer)
+
+                    slot_sent += bytes_sent
+                    idx += bytes_sent
+                else:
+                    time.sleep(0.001)
+
+    def run_tcp(self, addr, ipv6, sock=None):
         self.log.info("tcp {}: [1/4] connecting...".format(addr))
 
         sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
@@ -51,22 +71,53 @@ class ConnectivityClient:
         try:
             sock.connect(addr)
         except OSError as e:
-            self.log.error("tcp {}: [*/4] connection failed: {}".format(e.strerror))
+            self.log.error("tcp {}: [*/4] connection failed: {}".format(addr, e.strerror))
         else:
             self.log.info("tcp {}: [2/4] sending...".format(addr))
-            sock.send(self.data)
+
+            self.send_stream_throttled(sock)
+
+            #sock.send(self.data)
             self.log.info("tcp {}: [3/4] receiving...".format(addr))
             sock.recv(len(self.data))
             self.log.info("tcp {}: [4/4] send & receive successful.".format(addr))
         finally:
             sock.close()
-    
+
+    def run_tls(self, addr, ipv6):
+        self.log.info("tls {}: [1/5] connecting...".format(addr))
+
+        sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+
+        try:
+            sock.connect(addr)
+        except OSError as e:
+            self.log.error("tls {}: [*/5] connection failed: {}".format(addr, e.strerror))
+        else:
+            self.log.info("tls {}: [2/5] establishing encrypted communication...".format(addr))
+
+            sock.send(b'happy dance!')
+            sock = ssl.wrap_socket(sock, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_REQUIRED, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs='servercert.pem', ciphers='HIGH', do_handshake_on_connect=False)
+            sock.do_handshake()
+
+
+            self.log.info("tls {}: [3/5] sending...".format(addr))
+
+            self.send_stream_throttled(sock)
+
+            #sock.send(self.data)
+            self.log.info("tls {}: [4/5] receiving...".format(addr))
+            sock.recv(len(self.data))
+            self.log.info("tls {}: [5/5] send & receive successful.".format(addr))
+        finally:
+            sock.close()
+
     def run_udp(self, addr, ipv6):
         self.log.info("udp {} [1/3]: sending... ".format(addr))
 
         # calculate delay between packets
-        delay = self.udpPacketSize*8 / self.udp_bitrate
-        self.log.debug("udp {} [1/3]: sending with bitrate {} bit/s and packet size {} bytes. calculated delay between packets: {}s".format(addr, self.udp_bitrate, self.udpPacketSize, delay))
+        delay = self.udpPacketSize*8 / self.bitrate
+        self.log.debug("udp {} [1/3]: sending with bitrate {} bit/s and packet size {} bytes. calculated delay between packets: {}s".format(addr, self.bitrate, self.udpPacketSize, delay))
 
         sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 
@@ -97,11 +148,7 @@ class ConnectivityClient:
         
         sock.close()
         
-    
-    def run_tls(self, addr, ipv6):
-        raise NotImplemented()
-        
-        self.log.info("send image to {} over tls".format(addr))
+
         
 
 def main():
@@ -113,43 +160,31 @@ def main():
     parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
     parser.add_argument('--hosts', metavar='HOSTNAME/IP', type=str, nargs='+', required=True, dest='hosts')
     parser.add_argument('--ports', metavar='PORT', type=int, nargs='+', required=True, dest='ports')
+    parser.add_argument('-b', '--bitrate', default='1M', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
 
-    # tcp options
-    parser_tcp = parser.add_argument_group("options for tcp protocol")
+    parser_tcp = parser.add_mutually_exclusive_group()
+    parser_tcp.add_argument('--tcp', action='store_true', dest='enable_tcp', help='Enable tcp test.')
+    parser_tcp.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
 
-    parser_tcp_en = parser.add_mutually_exclusive_group()
-    parser_tcp_en.add_argument('--tcp', action='store_true', dest='enable_tcp', help='Enable tcp test.')
-    parser_tcp_en.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
+    parser_udp = parser.add_mutually_exclusive_group()
+    parser_udp.add_argument('--udp', action='store_true', dest='enable_udp', help='Enable udp test.')
+    parser_udp.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')
 
-    parser_tcp.add_argument('--tcp-bitrate', default='1M', metavar='BITRATE', help='Set maximum tcp bitrate. This also applies for tls. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='tcp_bitrate')
-
-    # udp options
-    parser_udp = parser.add_argument_group("options for udp protocol")
-
-    parser_udp_en = parser_udp.add_mutually_exclusive_group()
-    parser_udp_en.add_argument('--udp', action='store_true', dest='enable_udp', help='Enable udp test.')
-    parser_udp_en.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')
-
-    parser_udp.add_argument('--udp-bitrate', default='1M', metavar='BITRATE', help='Set maximum udp bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='udp_bitrate')
-
-    # tls options
-    parser_tls = parser.add_argument_group("options for udp protocol")
-
-    parser_tls_en = parser.add_mutually_exclusive_group()
-    parser_tls_en.add_argument('--tls', action='store_true', dest='enable_tls', help='Enable tls test.')
-    parser_tls_en.add_argument('--no-tls', action='store_false', dest='enable_tls', help='Disable udp test.')
+    parser_tls = parser.add_mutually_exclusive_group()
+    parser_tls.add_argument('--tls', action='store_true', dest='enable_tls', help='Enable tls test.')
+    parser_tls.add_argument('--no-tls', action='store_false', dest='enable_tls', help='Disable udp test.')
 
     parser.set_defaults(enable_tcp=None, enable_udp=None, enable_tls=None, enable_dtls=None, enable_sctp=None)
 
     args = parser.parse_args()
 
     # parse bitrate
-    if args.udp_bitrate[-1] == 'M':
-        udp_bitrate = int(args.udp_bitrate[0:-1])*1000000
-    elif args.udp_bitrate[-1] == 'k':
-        udp_bitrate = int(args.udp_bitrate[0:-1])*1000
+    if args.bitrate[-1] == 'M':
+        bitrate = int(args.bitrate[0:-1])*1000000
+    elif args.bitrate[-1] == 'k':
+        bitrate = int(args.bitrate[0:-1])*1000
     else:
-        udp_bitrate = int(args.udp_bitrate)
+        bitrate = int(args.bitrate)
 
     # check for running tcpdump
     if not args.no_tcpdump_check:
@@ -166,13 +201,21 @@ def main():
             try:
                 infos = socket.getaddrinfo(host, None, family=socket.AF_INET)
             except socket.gaierror as e:
-                logging.error("skipping {}: {}".format(host, e.strerror))
+                logging.error("skipping for ipv4 {}: {}".format(host, e.strerror))
             else:
                 ips.append( infos[0][4][0] )
+
+            try:
+                infos_v6 = socket.getaddrinfo(host, None, family=socket.AF_INET6)
+            except socket.gaierror as e:
+                logging.error("skipping for ipv6 {}: {}".format(host, e.strerror))
+            else:
+                ips.append( infos_v6[0][4][0] )
+
         else:
             ips.append(host)
         
-    cc = ConnectivityClient(ips, args.ports, args.data.read(), udp_bitrate=udp_bitrate)
+    cc = ConnectivityClient(ips, args.ports, args.data.read(), bitrate=bitrate)
     cc.run(enable_tcp=args.enable_tcp, enable_udp=args.enable_udp, enable_tls=args.enable_tls, enable_dtls=args.enable_dtls, enable_sctp=args.enable_sctp)
 
 if __name__ == "__main__":

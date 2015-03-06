@@ -1,3 +1,4 @@
+__author__ = 'Elio Gubser'
 import socket
 import argparse
 import ipaddress
@@ -6,11 +7,13 @@ import time
 import ssl
 #import dtls
 
+import common
+
 class ConnectivityClient:
-    def __init__(self, ips, ports, data, udpTimeout=20, udpPacketSize=4096, bitrate=512*1024):
+    def __init__(self, ips, ports, data, timeout=20, udpPacketSize=4096, bitrate=512*1024):
         self.log = logging.getLogger("client")
         self.endpoints = [((ip, port), ipaddress.ip_address(ip).version == 6) for port in ports for ip in ips]
-        self.udpTimeout = udpTimeout
+        self.timeout = timeout
         self.udpPacketSize = udpPacketSize
         self.bitrate = bitrate
 
@@ -44,25 +47,6 @@ class ConnectivityClient:
             if enable_sctp:
                 pass#self.run_sctp()
 
-    def send_stream_throttled(self, sock):
-        # calculate amount to send in one slot_time.
-        slot_time = 0.01
-        slot_amount = int(self.bitrate/8 * slot_time)
-
-        idx = 0
-        while idx < len(self.data):
-            slot_start = time.time()
-            slot_sent = 0
-            while slot_start+slot_time > time.time():
-                if slot_sent < slot_amount and idx < len(self.data):
-                    buffer = self.data[idx:min(idx+(slot_amount-slot_sent), len(self.data))]
-                    bytes_sent = sock.send(buffer)
-
-                    slot_sent += bytes_sent
-                    idx += bytes_sent
-                else:
-                    time.sleep(0.001)
-
     def run_tcp(self, addr, ipv6, sock=None):
         self.log.info("tcp {}: [1/4] connecting...".format(addr))
 
@@ -74,13 +58,15 @@ class ConnectivityClient:
             self.log.error("tcp {}: [*/4] connection failed: {}".format(addr, e.strerror))
         else:
             self.log.info("tcp {}: [2/4] sending...".format(addr))
+            common.send_stream_throttled(sock, self.bitrate, self.data)
 
-            self.send_stream_throttled(sock)
-
-            #sock.send(self.data)
             self.log.info("tcp {}: [3/4] receiving...".format(addr))
-            sock.recv(len(self.data))
-            self.log.info("tcp {}: [4/4] send & receive successful.".format(addr))
+            recvd_length = common.recv_stream(sock, len(self.data), self.timeout)
+
+            if recvd_length < len(self.data):
+                self.log.error("tcp {}: [4/4] timeout. received data not enough".format(addr))
+            else:
+                self.log.info("tcp {}: [4/4] send & receive successful.".format(addr))
         finally:
             sock.close()
 
@@ -100,15 +86,16 @@ class ConnectivityClient:
             sock = ssl.wrap_socket(sock, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_REQUIRED, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs='servercert.pem', ciphers='HIGH', do_handshake_on_connect=False)
             sock.do_handshake()
 
-
             self.log.info("tls {}: [3/5] sending...".format(addr))
+            common.send_stream_throttled(sock, self.bitrate, self.data)
 
-            self.send_stream_throttled(sock)
-
-            #sock.send(self.data)
             self.log.info("tls {}: [4/5] receiving...".format(addr))
-            sock.recv(len(self.data))
-            self.log.info("tls {}: [5/5] send & receive successful.".format(addr))
+            recvd_length = common.recv_stream(sock, len(self.data), self.timeout)
+
+            if recvd_length < len(self.data):
+                self.log.error("tls {}: [5/5] timeout. received data not enough".format(addr))
+            else:
+                self.log.info("tls {}: [5/5] send & receive successful.".format(addr))
         finally:
             sock.close()
 
@@ -132,7 +119,7 @@ class ConnectivityClient:
             last_time = time.time()
             sock.settimeout(1)
             while recvd_length < len(self.data):
-                if last_time + self.udpTimeout < time.time():
+                if last_time + self.timeout < time.time():
                     raise TimeoutError
                 try:
                     recv_data, recv_addr = sock.recvfrom(self.udpPacketSize)

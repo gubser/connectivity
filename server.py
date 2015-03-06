@@ -1,3 +1,4 @@
+__author__ = 'Elio Gubser'
 import socket
 import socketserver
 import argparse
@@ -6,6 +7,7 @@ import time
 
 import threading
 import ssl
+import common
 
 class TcpRequest(socketserver.BaseRequestHandler):
     def handle(self):
@@ -21,30 +23,25 @@ class TcpRequest(socketserver.BaseRequestHandler):
             log.info("switching to tls")
             self.request = ssl.wrap_socket(self.request, keyfile='serverkey.pem', certfile='servercert.pem', server_side=True, cert_reqs=ssl.CERT_OPTIONAL, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs=None, ciphers='HIGH', do_handshake_on_connect=False)
             self.request.do_handshake()
-
-        # enable timeout
-        self.request.settimeout(self.server.timeout)
+            recvd_length = 0
+        else:
+            recvd_length = len(magic)
 
         # recv image
-        recvd_length = 0
-        last_time = time.time()
         log.info("recv {} bytes".format(expected_length))
-        while recvd_length < expected_length and last_time + self.server.timeout > time.time():
-            try:
-                recvd = self.request.recv(expected_length - recvd_length)
-            except socket.timeout:
-                continue
-            else:
-                # received something, so reset timeout
-                last_time = time.time()
-                recvd_length += len(recvd)
+
+        start = time.time()
+        recvd_length += common.recv_stream(self.request, expected_length-recvd_length, self.server.timeout)
+        bitrate = int(recvd_length*8 / (time.time() - start))
 
         if recvd_length < expected_length:
             log.error("timeout. received data not enough")
         
         # send data
-        log.info("send {} bytes".format(expected_length))
-        self.request.send(self.server.data)
+        log.info("send {} bytes with bitrate {} bit/s".format(expected_length, bitrate))
+        self.request.setblocking(True)
+
+        common.send_stream_throttled(self.request, bitrate, self.server.data)
         
         log.info("finished")
         self.request.close()

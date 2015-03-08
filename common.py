@@ -3,7 +3,7 @@ __author__ = 'Elio Gubser'
 import time
 import socket
 
-def send_stream_throttled(sock, bitrate, data):
+def stream_send_throttled(sock, bitrate, data):
     sock.setblocking(True)
 
     # calculate amount to send in one slot_time.
@@ -24,7 +24,7 @@ def send_stream_throttled(sock, bitrate, data):
             else:
                 time.sleep(0.001)
 
-def recv_stream(sock, expected_length, timeout):
+def stream_recv(sock, expected_length, timeout):
     sock.settimeout(1)
 
     recvd_length = 0
@@ -44,3 +44,12 @@ def recv_stream(sock, expected_length, timeout):
                 time.sleep(0.01)
 
     return recvd_length
+
+def dgram_send_throttled(sock, bitrate, data, packet_size, addr, lock):
+    delay = packet_size*8 / bitrate
+
+    for idx in range(0, len(data), packet_size):
+        packet = data[idx:min(idx+packet_size, len(data))]
+        with lock:
+            sock.sendto(packet, addr)
+        time.sleep(delay)

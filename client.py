@@ -58,10 +58,10 @@ class ConnectivityClient:
             self.log.error("tcp {}: [*/4] connection failed: {}".format(addr, e.strerror))
         else:
             self.log.info("tcp {}: [2/4] sending...".format(addr))
-            common.send_stream_throttled(sock, self.bitrate, self.data)
+            common.stream_send_throttled(sock, self.bitrate, self.data)
 
             self.log.info("tcp {}: [3/4] receiving...".format(addr))
-            recvd_length = common.recv_stream(sock, len(self.data), self.timeout)
+            recvd_length = common.stream_recv(sock, len(self.data), self.timeout)
 
             if recvd_length < len(self.data):
                 self.log.error("tcp {}: [4/4] timeout. received data not enough".format(addr))
@@ -87,10 +87,10 @@ class ConnectivityClient:
             sock.do_handshake()
 
             self.log.info("tls {}: [3/5] sending...".format(addr))
-            common.send_stream_throttled(sock, self.bitrate, self.data)
+            common.stream_send_throttled(sock, self.bitrate, self.data)
 
             self.log.info("tls {}: [4/5] receiving...".format(addr))
-            recvd_length = common.recv_stream(sock, len(self.data), self.timeout)
+            recvd_length = common.stream_recv(sock, len(self.data), self.timeout)
 
             if recvd_length < len(self.data):
                 self.log.error("tls {}: [5/5] timeout. received data not enough".format(addr))

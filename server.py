@@ -9,6 +9,8 @@ import threading
 import ssl
 import common
 
+import select
+
 class TcpRequest(socketserver.BaseRequestHandler):
     def handle(self):
         log = logging.getLogger("tcp")
@@ -31,7 +33,7 @@ class TcpRequest(socketserver.BaseRequestHandler):
         log.info("recv {} bytes".format(expected_length))
 
         start = time.time()
-        recvd_length += common.recv_stream(self.request, expected_length-recvd_length, self.server.timeout)
+        recvd_length += common.stream_recv(self.request, expected_length-recvd_length, self.server.timeout)
         bitrate = int(recvd_length*8 / (time.time() - start))
 
         if recvd_length < expected_length:
@@ -41,7 +43,7 @@ class TcpRequest(socketserver.BaseRequestHandler):
         log.info("send {} bytes with bitrate {} bit/s".format(expected_length, bitrate))
         self.request.setblocking(True)
 
-        common.send_stream_throttled(self.request, bitrate, self.server.data)
+        common.stream_send_throttled(self.request, bitrate, self.server.data)
         
         log.info("finished")
         self.request.close()
@@ -54,108 +56,121 @@ class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         socketserver.TCPServer.server_bind(self)
 
 class UDPServer:
-    def __init__(self, port, ipv6, data, packetSize=4096, timeout=15):
-        self.log = logging.getLogger("udp-{}:{:<6}".format("6" if ipv6 else "4", port))
-        
-        self.ipv6 = ipv6
-        self.sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    def __init__(self, port, data, packet_size=4096, timeout=15):
+        self.log = logging.getLogger("udp:{:<6}".format(port))
+
+        self.sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         self.sock.settimeout(1)
         self.sock.bind(('', port))
         self.port = port
-        self.packetSize = packetSize
+        self.packet_size = packet_size
 
-        self.thread = threading.Thread(target=self._proc, daemon=True)
+
+        self.thread_recv = threading.Thread(target=self._proc, daemon=True)
+        self.thread_timeout = threading.Thread(target=self._timeout_proc, daemon=True)
+
+        self.lock = threading.Lock()
 
         self.data = data
         self.timeout = timeout
         self.requests = {}
-        
+
+    def read_ready(self):
+        with self.lock:
+            rready, wready, xready = select.select([self.sock.fileno()], [], [])
+
+        return len(rready) > 0
+
     def start(self):
-        self.thread.start()
+        self.thread_recv.start()
+        self.thread_timeout.start()
         self.log.info("server started")
     
-    def perform_send(self, addr):
-        rate = float(self.requests[addr][0]) / (self.requests[addr][1] - self.requests[addr][2])
-        delay = self.packetSize / rate
+    def issue_send(self, addr):
+        t = threading.Thread(target=self._send_proc, args=(addr,))
+        t.start()
 
-        self.log.info("{}: sending data".format(addr))
-        for idx in range(0, len(self.data), self.packetSize):
-            packet = self.data[idx:min(idx+self.packetSize, len(self.data))]
-            self.sock.sendto(packet, addr)
-            time.sleep(delay)
-        self.log.info("{}: data send complete".format(addr))
-    
-    def _proc(self):
+    def _timeout_proc(self):
         while True:
-            try:
-                buf, addr = self.sock.recvfrom(self.packetSize)
-            except socket.timeout:
-                # check for request timeout, initiate send and remove from requests
+            time.sleep(1)
+
+            with self.lock:
                 toDelete = []
                 for key in iter(self.requests):
                     if self.requests[key][1] + self.timeout < time.time():
                         self.log.info("{}: timeout, initiate sending data".format(key))
-                        self.perform_send(addr)
+                        self.issue_send(addr)
                         toDelete.append(addr)
 
                 for key in toDelete:
                     del self.requests[key]
 
+    def _send_proc(self, addr):
+        bitrate = int(float(8*self.requests[addr][0]) / (self.requests[addr][1] - self.requests[addr][2]))
+
+        self.log.info("{}: sending data".format(addr))
+
+        common.dgram_send_throttled(self.sock, bitrate, self.data, self.packet_size, addr, self.lock)
+
+        self.log.info("{}: data send complete".format(addr))
+
+    def _recv_proc(self):
+        while True:
+            if self.read_ready():
+                with self.lock:
+                    buf, addr = self.sock.recvfrom(self.packet_size)
+
+                    if addr not in self.requests:
+                        # add new entry: bytes_received, time last received, time first received
+                        self.requests[addr] = [0, 0, time.time()]
+
+
+                    # reset timeout
+                    self.requests[addr][1] = time.time()
+
+                    # record bytes received
+                    self.requests[addr][0] += len(buf)
+
+                    self.log.debug("{}: recvd {} of {} bytes ({} %)".format(addr, self.requests[addr][0], len(self.data), self.requests[addr][0]*100/len(self.data)))
+
+                    # all data received? start transmit
+                    if self.requests[addr][0] >= len(self.data):
+                        self.log.info("{}: recvd full data".format(addr, self.requests[addr][0], len(self.data)))
+                        self.perform_send(addr)
+                        del self.requests[addr]
             else:
-                if addr not in self.requests:
-                    # add new entry: bytes_received, time last received, time first received
-                    self.requests[addr] = [0, 0, time.time()]
-                    
-                    
-                # reset timeout
-                self.requests[addr][1] = time.time()
-                
-                # record bytes received
-                self.requests[addr][0] += len(buf)
-                
-                self.log.debug("{}: recvd {} of {} bytes ({} %)".format(addr, self.requests[addr][0], len(self.data), self.requests[addr][0]*100/len(self.data)))
-                
-                # all data received? start transmit
-                if self.requests[addr][0] >= len(self.data):
-                    self.log.info("{}: recvd full data".format(addr, self.requests[addr][0], len(self.data)))
-                    self.perform_send(addr)
-                    del self.requests[addr]
-            
+                time.sleep(0.1)
             
 
 def start_servers(ports, data):
     logging.info("starting servers...")
     servers = {}
     for port in ports:
+        logging.info("starting tcp port {}".format(port))
         tcp = ThreadingTCPServer(('', port), TcpRequest)
         tcp.data = data
         tcp.timeout = 15
         tcp.listener_thread = threading.Thread(target=tcp.serve_forever, daemon=True)
         tcp.listener_thread.start()
-        
-        udp4 = UDPServer(port, False, data)
-        udp4.start()
 
-        udp6 = None
-        #udp6 = UDPServer(port, True, data)
-        #udp6.start()
+        logging.info("starting udp port {}".format(port))
+        udp = UDPServer(port, data)
+        udp.start()
                 
-        servers[port] = (tcp, udp4, udp6)
+        servers[port] = (tcp, udp)
         
     while True:
         time.sleep(100)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
     
     # parse parameters
-    parser = argparse.ArgumentParser(description='Provides a server for TCP/UDP/TLS/DTLS/SCTP connectivity testing.')
+    parser = argparse.ArgumentParser(description='Provides a server for TCP/UDP/TLS connectivity testing.')
     parser.add_argument('-f', '--file', default='image.png', metavar='filename', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
     parser.add_argument('ports', type=int, metavar='port', nargs='+')
 
     args = parser.parse_args()
-    print(args.ports)
-    
-    
+
     # start servers
     start_servers(args.ports, args.data.read())

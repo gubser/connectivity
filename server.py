@@ -11,39 +11,43 @@ import common
 
 class TcpRequest(socketserver.BaseRequestHandler):
     def handle(self):
-        log = logging.getLogger("tcp")
+        log = None
 
         expected_length = len(self.server.data)
-        log.info("new tcp connection".format(self.client_address[0]))
 
         # check for magic string
         magic_expected = b'happy dance!'
         magic = self.request.recv(len(magic_expected))
         if magic == magic_expected:
-            log.info("switching to tls")
+            log = logging.getLogger("tls:{:<6}".format(self.server.server_address[1]))
+            log.info("{}: new tls connection".format(self.client_address))
+            
             self.request = ssl.wrap_socket(self.request, keyfile='serverkey.pem', certfile='servercert.pem', server_side=True, cert_reqs=ssl.CERT_OPTIONAL, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs=None, ciphers='HIGH', do_handshake_on_connect=False)
             self.request.do_handshake()
             recvd_length = 0
         else:
             recvd_length = len(magic)
+            
+            log = logging.getLogger("tcp:{:<6}".format(self.server.server_address[1]))
+            log.info("{}: new tcp connection".format(self.client_address))
 
         # recv image
-        log.info("recv {} bytes".format(expected_length))
+        log.info("{}: recv {} bytes".format(self.client_address, expected_length))
 
         start = time.time()
         recvd_length += common.recv_stream(self.request, expected_length-recvd_length, self.server.timeout)
         bitrate = int(recvd_length*8 / (time.time() - start))
 
         if recvd_length < expected_length:
-            log.error("timeout. received data not enough")
+            log.error("{}: timeout. received data not enough".format(self.client_address))
         
         # send data
-        log.info("send {} bytes with bitrate {} bit/s".format(expected_length, bitrate))
+        log.info("{}: send {} bytes with bitrate {} bit/s".format(self.client_address, expected_length, bitrate))
         self.request.setblocking(True)
 
         common.send_stream_throttled(self.request, bitrate, self.server.data)
         
-        log.info("finished")
+        log.info("{}: finished".format(self.client_address))
         self.request.close()
         
 class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -105,6 +109,7 @@ class UDPServer:
                 if addr not in self.requests:
                     # add new entry: bytes_received, time last received, time first received
                     self.requests[addr] = [0, 0, time.time()]
+                    self.log.info("{}: new peer found, receiving data...".format(addr))
                     
                     
                 # reset timeout
@@ -133,14 +138,11 @@ def start_servers(ports, data):
         tcp.listener_thread = threading.Thread(target=tcp.serve_forever, daemon=True)
         tcp.listener_thread.start()
         
-        udp4 = UDPServer(port, False, data)
-        udp4.start()
-
-        udp6 = None
-        #udp6 = UDPServer(port, True, data)
-        #udp6.start()
+        # also accepts ipv4
+        udp6 = UDPServer(port, True, data)
+        udp6.start()
                 
-        servers[port] = (tcp, udp4, udp6)
+        servers[port] = (tcp, udp6)
         
     while True:
         time.sleep(100)

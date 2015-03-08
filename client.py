@@ -55,47 +55,47 @@ class ConnectivityClient:
         try:
             sock.connect(addr)
         except OSError as e:
-            self.log.error("tcp {}: [*/4] connection failed: {}".format(addr, e.strerror))
+            self.log.error("tcp {} [*/4]: connection failed: {}".format(addr, e.strerror))
         else:
-            self.log.info("tcp {}: [2/4] sending...".format(addr))
+            self.log.info("tcp {} [2/4]: sending...".format(addr))
             common.send_stream_throttled(sock, self.bitrate, self.data)
 
-            self.log.info("tcp {}: [3/4] receiving...".format(addr))
+            self.log.info("tcp {} [3/4]: receiving...".format(addr))
             recvd_length = common.recv_stream(sock, len(self.data), self.timeout)
 
             if recvd_length < len(self.data):
-                self.log.error("tcp {}: [4/4] timeout. received data not enough".format(addr))
+                self.log.error("tcp {} [4/4]: timeout. received data not enough".format(addr))
             else:
-                self.log.info("tcp {}: [4/4] send & receive successful.".format(addr))
+                self.log.info("tcp {} [4/4]: send & receive successful.".format(addr))
         finally:
             sock.close()
 
     def run_tls(self, addr, ipv6):
-        self.log.info("tls {}: [1/5] connecting...".format(addr))
+        self.log.info("tls {} [1/5]: connecting...".format(addr))
 
         sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
 
         try:
             sock.connect(addr)
         except OSError as e:
-            self.log.error("tls {}: [*/5] connection failed: {}".format(addr, e.strerror))
+            self.log.error("tls {} [*/5]: connection failed: {}".format(addr, e.strerror))
         else:
-            self.log.info("tls {}: [2/5] establishing encrypted communication...".format(addr))
+            self.log.info("tls {} [2/5]: establishing encrypted communication...".format(addr))
 
             sock.send(b'happy dance!')
             sock = ssl.wrap_socket(sock, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_REQUIRED, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs='servercert.pem', ciphers='HIGH', do_handshake_on_connect=False)
             sock.do_handshake()
 
-            self.log.info("tls {}: [3/5] sending...".format(addr))
+            self.log.info("tls {} [3/5]: sending...".format(addr))
             common.send_stream_throttled(sock, self.bitrate, self.data)
 
-            self.log.info("tls {}: [4/5] receiving...".format(addr))
+            self.log.info("tls {} [4/5]: receiving...".format(addr))
             recvd_length = common.recv_stream(sock, len(self.data), self.timeout)
 
             if recvd_length < len(self.data):
-                self.log.error("tls {}: [5/5] timeout. received data not enough".format(addr))
+                self.log.error("tls {} [5/5]: timeout. received data not enough".format(addr))
             else:
-                self.log.info("tls {}: [5/5] send & receive successful.".format(addr))
+                self.log.info("tls {} [5/5]: send & receive successful.".format(addr))
         finally:
             sock.close()
 
@@ -107,13 +107,17 @@ class ConnectivityClient:
         self.log.debug("udp {} [1/3]: sending with bitrate {} bit/s and packet size {} bytes. calculated delay between packets: {}s".format(addr, self.bitrate, self.udpPacketSize, delay))
 
         sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-
-        for idx in range(0, len(self.data), self.udpPacketSize):
-            packet = self.data[idx:min(idx+self.udpPacketSize, len(self.data))]
-            sock.sendto(packet, addr)
-            time.sleep(delay)
-
-        self.log.info("udp {} [2/3]: send complete, receiving...".format(addr))
+        
+        try:
+            for idx in range(0, len(self.data), self.udpPacketSize):
+                packet = self.data[idx:min(idx+self.udpPacketSize, len(self.data))]
+                sock.sendto(packet, addr)
+                time.sleep(delay)
+        except OSError as e:
+            self.log.error("udp {} [2/3]: send failed:".format(e.strerror))
+        else:
+            self.log.info("udp {} [2/3]: send complete, receiving...".format(addr))
+            
         recvd_length = 0
         try:
             last_time = time.time()

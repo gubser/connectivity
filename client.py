@@ -139,10 +139,10 @@ class ConnectivityClient:
         
 
 def main():
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
     
     # parse parameters
-    parser = argparse.ArgumentParser(description='Provides a client for TCP/UDP/TLS/DTLS/SCTP connectivity testing.')
+    parser = argparse.ArgumentParser(description='Provides a client for TCP/UDP/TLS connectivity testing.')
     parser.add_argument('-f', '--file', default='image.png', metavar='FILENAME', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
     parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
     parser.add_argument('--hosts', metavar='HOSTNAME/IP', type=str, nargs='+', required=True, dest='hosts')

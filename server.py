@@ -54,7 +54,7 @@ class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         socketserver.TCPServer.server_bind(self)
 
 class UDPServer:
-    def __init__(self, port, ipv6, data, packetSize=4096, timeout=15):
+    def __init__(self, port, ipv6, data, packet_size=4096, timeout=15):
         self.log = logging.getLogger("udp-{}:{:<6}".format("6" if ipv6 else "4", port))
         
         self.ipv6 = ipv6
@@ -62,7 +62,7 @@ class UDPServer:
         self.sock.settimeout(1)
         self.sock.bind(('', port))
         self.port = port
-        self.packetSize = packetSize
+        self.packet_size = packet_size
 
         self.thread = threading.Thread(target=self._proc, daemon=True)
 
@@ -76,11 +76,11 @@ class UDPServer:
     
     def perform_send(self, addr):
         rate = float(self.requests[addr][0]) / (self.requests[addr][1] - self.requests[addr][2])
-        delay = self.packetSize / rate
+        delay = self.packet_size / rate
 
         self.log.info("{}: sending data".format(addr))
-        for idx in range(0, len(self.data), self.packetSize):
-            packet = self.data[idx:min(idx+self.packetSize, len(self.data))]
+        for idx in range(0, len(self.data), self.packet_size):
+            packet = self.data[idx:min(idx+self.packet_size, len(self.data))]
             self.sock.sendto(packet, addr)
             time.sleep(delay)
         self.log.info("{}: data send complete".format(addr))
@@ -88,7 +88,7 @@ class UDPServer:
     def _proc(self):
         while True:
             try:
-                buf, addr = self.sock.recvfrom(self.packetSize)
+                buf, addr = self.sock.recvfrom(self.packet_size)
             except socket.timeout:
                 # check for request timeout, initiate send and remove from requests
                 toDelete = []
@@ -146,10 +146,10 @@ def start_servers(ports, data):
         time.sleep(100)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
     
     # parse parameters
-    parser = argparse.ArgumentParser(description='Provides a server for TCP/UDP/TLS/DTLS/SCTP connectivity testing.')
+    parser = argparse.ArgumentParser(description='Provides a server for TCP/UDP/TLS connectivity testing.')
     parser.add_argument('-f', '--file', default='image.png', metavar='filename', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
     parser.add_argument('ports', type=int, metavar='port', nargs='+')
 

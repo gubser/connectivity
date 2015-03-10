@@ -18,7 +18,7 @@ class ConnectivityClient:
         self.bitrate = bitrate
 
         self.data = data
-        
+
     def run(self, enable_tcp=None, enable_udp=None, enable_tls=None, enable_dtls=None, enable_sctp=None):
 
         if enable_tcp is None and enable_udp is None and enable_tls is None and enable_dtls is None and enable_sctp is None:
@@ -29,11 +29,12 @@ class ConnectivityClient:
             enable_dtls = True
             enable_sctp = True
         else:
-            enable_tcp = False if enable_tcp is None else True
-            enable_udp = False if enable_udp is None else True
-            enable_tls = False if enable_tls is None else True
-            enable_dtls = False if enable_dtls is None else True
-            enable_sctp = False if enable_sctp is None else True
+            # bht -- fixed a logic error here that made --no-tls break...
+            enable_tcp = bool(enable_tcp)
+            enable_udp = bool(enable_udp)
+            enable_tls = bool(enable_tls)
+            enable_dtls = bool(enable_dtls)
+            enable_sctp = bool(enable_sctp)
 
         for addr, ipv6 in self.endpoints:
             if enable_tcp:
@@ -107,7 +108,7 @@ class ConnectivityClient:
         self.log.debug("udp {} [1/3]: sending with bitrate {} bit/s and packet size {} bytes. calculated delay between packets: {}s".format(addr, self.bitrate, self.udpPacketSize, delay))
 
         sock = socket.socket(socket.AF_INET6 if ipv6 else socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        
+
         try:
             for idx in range(0, len(self.data), self.udpPacketSize):
                 packet = self.data[idx:min(idx+self.udpPacketSize, len(self.data))]
@@ -117,7 +118,7 @@ class ConnectivityClient:
             self.log.error("udp {} [2/3]: send failed:".format(e.strerror))
         else:
             self.log.info("udp {} [2/3]: send complete, receiving...".format(addr))
-            
+
         recvd_length = 0
         try:
             last_time = time.time()
@@ -136,15 +137,15 @@ class ConnectivityClient:
             self.log.info("udp {} [3/3]: timeout on recv, got {} of {} bytes ({} %)".format(addr, recvd_length, len(self.data), recvd_length*100/len(self.data)))
         else:
             self.log.info("udp {} [3/3]: recv complete.".format(addr))
-        
-        sock.close()
-        
 
-        
+        sock.close()
+
+
+
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)-15s %(name)-5s %(levelname)-8s %(message)s')
-    
+
     # parse parameters
     parser = argparse.ArgumentParser(description='Provides a client for TCP/UDP/TLS connectivity testing.')
     parser.add_argument('-f', '--file', default='image.png', metavar='FILENAME', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
@@ -182,7 +183,7 @@ def main():
         import psutil
         if 'tcpdump' not in [str(p.name) for p in psutil.process_iter()]:
             raise Exception('No tcpdump process is running. To skip this check, use "--no-tcpdump-check".')
-    
+
     # lookup hostnames
     ips = []
     for host in args.hosts:
@@ -205,7 +206,7 @@ def main():
 
         else:
             ips.append(host)
-        
+
     cc = ConnectivityClient(ips, args.ports, args.data.read(), bitrate=bitrate)
     cc.run(enable_tcp=args.enable_tcp, enable_udp=args.enable_udp, enable_tls=args.enable_tls, enable_dtls=args.enable_dtls, enable_sctp=args.enable_sctp)
 

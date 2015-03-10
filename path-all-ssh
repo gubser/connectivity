@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for node in path-ams path-lon path-nyc path-sfo path-sin; do
+    echo ==== $node ====
+    ssh -t $node $*
+done

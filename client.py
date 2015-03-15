@@ -66,7 +66,7 @@ class ConnectivityClient:
 
             self.log.info("tls {} [2/5]: establishing encrypted communication...".format(addr))
 
-            sock.send(b'happy dance!')
+            sock.send(b'STARTTLS')
             sock = ssl.wrap_socket(sock, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_REQUIRED, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs='servercert.pem', ciphers='HIGH', do_handshake_on_connect=False)
             sock.do_handshake()
 
@@ -138,7 +138,7 @@ def main():
     # parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
     parser.add_argument('--hosts', metavar='HOSTNAME/IP', type=str, nargs='+', required=True, dest='hosts')
     parser.add_argument('--ports', metavar='PORT', type=int, nargs='+', required=True, dest='ports')
-    parser.add_argument('-b', '--bitrate', default='256k', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
+    parser.add_argument('-b', '--bitrate', default='512k', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
 
     parser.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
     parser.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')

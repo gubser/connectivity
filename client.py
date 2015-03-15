@@ -10,7 +10,7 @@ import ssl
 import common
 
 class ConnectivityClient:
-    def __init__(self, ips, ports, data, timeout=20, udpPacketSize=4096, bitrate=512*1024):
+    def __init__(self, ips, ports, data, timeout=20, udpPacketSize=1280, bitrate=512*1024):
         self.log = logging.getLogger("client")
         self.endpoints = [((ip, port), ipaddress.ip_address(ip).version == 6) for port in ports for ip in ips]
         self.timeout = timeout
@@ -138,7 +138,7 @@ def main():
     # parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
     parser.add_argument('--hosts', metavar='HOSTNAME/IP', type=str, nargs='+', required=True, dest='hosts')
     parser.add_argument('--ports', metavar='PORT', type=int, nargs='+', required=True, dest='ports')
-    parser.add_argument('-b', '--bitrate', default='1M', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
+    parser.add_argument('-b', '--bitrate', default='256k', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
 
     parser.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
     parser.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')

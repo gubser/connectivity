@@ -19,23 +19,7 @@ class ConnectivityClient:
 
         self.data = data
 
-    def run(self, enable_tcp=None, enable_udp=None, enable_tls=None, enable_dtls=None, enable_sctp=None):
-
-        if enable_tcp is None and enable_udp is None and enable_tls is None and enable_dtls is None and enable_sctp is None:
-            # enable all checks if none of them is specified
-            enable_tcp = True
-            enable_udp = True
-            enable_tls = True
-            enable_dtls = True
-            enable_sctp = True
-        else:
-            # bht -- fixed a logic error here that made --no-tls break...
-            enable_tcp = bool(enable_tcp)
-            enable_udp = bool(enable_udp)
-            enable_tls = bool(enable_tls)
-            enable_dtls = bool(enable_dtls)
-            enable_sctp = bool(enable_sctp)
-
+    def run(self, enable_tcp=True, enable_udp=True, enable_tls=True, enable_dtls=True, enable_sctp=True):
         for addr, ipv6 in self.endpoints:
             if enable_tcp:
                 self.run_tcp(addr, ipv6)
@@ -154,19 +138,11 @@ def main():
     parser.add_argument('--ports', metavar='PORT', type=int, nargs='+', required=True, dest='ports')
     parser.add_argument('-b', '--bitrate', default='1M', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
 
-    parser_tcp = parser.add_mutually_exclusive_group()
-    parser_tcp.add_argument('--tcp', action='store_true', dest='enable_tcp', help='Enable tcp test.')
-    parser_tcp.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
+    parser.add_argument('--no-tcp', action='store_false', dest='enable_tcp', help='Disable tcp test.')
+    parser.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')
+    parser.add_argument('--no-tls', action='store_false', dest='enable_tls', help='Disable udp test.')
 
-    parser_udp = parser.add_mutually_exclusive_group()
-    parser_udp.add_argument('--udp', action='store_true', dest='enable_udp', help='Enable udp test.')
-    parser_udp.add_argument('--no-udp', action='store_false', dest='enable_udp', help='Disable udp test.')
-
-    parser_tls = parser.add_mutually_exclusive_group()
-    parser_tls.add_argument('--tls', action='store_true', dest='enable_tls', help='Enable tls test.')
-    parser_tls.add_argument('--no-tls', action='store_false', dest='enable_tls', help='Disable udp test.')
-
-    parser.set_defaults(enable_tcp=None, enable_udp=None, enable_tls=None, enable_dtls=None, enable_sctp=None)
+    parser.set_defaults(enable_tcp=True, enable_udp=True, enable_tls=True, enable_dtls=False, enable_sctp=False)
 
     args = parser.parse_args()
 

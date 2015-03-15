@@ -58,7 +58,7 @@ class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         socketserver.TCPServer.server_bind(self)
 
 class UDPServer:
-    def __init__(self, port, ipv6, data, packet_size=4096, timeout=15):
+    def __init__(self, port, ipv6, data, packet_size=1280, timeout=15):
         self.log = logging.getLogger("udp-{}:{:<6}".format("6" if ipv6 else "4", port))
 
         self.ipv6 = ipv6

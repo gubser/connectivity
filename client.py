@@ -10,7 +10,7 @@ import ssl
 import common
 
 class ConnectivityClient:
-    def __init__(self, ips, ports, data, timeout=20, udpPacketSize=1280, bitrate=512*1024):
+    def __init__(self, ips, ports, data, timeout=15, udpPacketSize=1280, bitrate=512*1024):
         self.log = logging.getLogger("client")
         self.endpoints = [((ip, port), ipaddress.ip_address(ip).version == 6) for port in ports for ip in ips]
         self.timeout = timeout

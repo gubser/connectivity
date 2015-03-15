@@ -39,9 +39,7 @@ class ConnectivityClient:
 
         try:
             sock.connect(addr)
-        except OSError as e:
-            self.log.error("tcp {} [*/4]: connection failed: {}".format(addr, e.strerror))
-        else:
+
             self.log.info("tcp {} [2/4]: sending...".format(addr))
             common.send_stream_throttled(sock, self.bitrate, self.data)
 
@@ -52,6 +50,9 @@ class ConnectivityClient:
                 self.log.error("tcp {} [4/4]: timeout. received data not enough".format(addr))
             else:
                 self.log.info("tcp {} [4/4]: send & receive successful.".format(addr))
+
+        except Exception as e:
+            self.log.error("tcp {} [*/4]: connection failed: {}".format(addr, e.strerror))
         finally:
             sock.close()
 
@@ -62,9 +63,7 @@ class ConnectivityClient:
 
         try:
             sock.connect(addr)
-        except OSError as e:
-            self.log.error("tls {} [*/5]: connection failed: {}".format(addr, e.strerror))
-        else:
+
             self.log.info("tls {} [2/5]: establishing encrypted communication...".format(addr))
 
             sock.send(b'happy dance!')
@@ -81,6 +80,9 @@ class ConnectivityClient:
                 self.log.error("tls {} [5/5]: timeout. received data not enough".format(addr))
             else:
                 self.log.info("tls {} [5/5]: send & receive successful.".format(addr))
+
+        except Exception as e:
+            self.log.error("tls {} [*/5]: connection failed: {}".format(addr, e.strerror))
         finally:
             sock.close()
 

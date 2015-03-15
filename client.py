@@ -133,7 +133,7 @@ def main():
     # parse parameters
     parser = argparse.ArgumentParser(description='Provides a client for TCP/UDP/TLS connectivity testing.')
     parser.add_argument('-f', '--file', default='image.png', metavar='FILENAME', help='loads image.png from current directory.', type=argparse.FileType('rb'), dest='data')
-    parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
+    # parser.add_argument('--no-tcpdump-check', action='store_true', dest='no_tcpdump_check')
     parser.add_argument('--hosts', metavar='HOSTNAME/IP', type=str, nargs='+', required=True, dest='hosts')
     parser.add_argument('--ports', metavar='PORT', type=int, nargs='+', required=True, dest='ports')
     parser.add_argument('-b', '--bitrate', default='1M', metavar='BITRATE', help='Set maximum bitrate. Use postfixes M and k to specify megabits or kilobits. (e.g. 500k for 500000 bits/s)', dest='bitrate')
@@ -154,11 +154,11 @@ def main():
     else:
         bitrate = int(args.bitrate)
 
-    # check for running tcpdump
-    if not args.no_tcpdump_check:
-        import psutil
-        if 'tcpdump' not in [str(p.name) for p in psutil.process_iter()]:
-            raise Exception('No tcpdump process is running. To skip this check, use "--no-tcpdump-check".')
+    # # check for running tcpdump
+    # if not args.no_tcpdump_check:
+    #     import psutil
+    #     if 'tcpdump' not in [str(p.name) for p in psutil.process_iter()]:
+    #         raise Exception('No tcpdump process is running. To skip this check, use "--no-tcpdump-check".')
 
     # lookup hostnames
     ips = []
